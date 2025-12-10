@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileText, Upload, ChevronRight, CheckCircle, Loader2, Sparkles } from "lucide-react";
+import { FileText, Upload, ChevronRight, CheckCircle, Loader2, Sparkles, Settings } from "lucide-react";
+import SettingsModal from "./SettingsModal";
 import styles from "./Analyzer.module.css";
 
 // Interface for MVP
@@ -13,6 +14,10 @@ type AnalysisResult = {
         missingSkills: string[];
     };
     rewrittenCV: string;
+    ethicalInsights?: {
+        biasCheck: string;
+        tokenUsage: number;
+    };
 } | null;
 
 export default function Analyzer() {
@@ -22,6 +27,17 @@ export default function Analyzer() {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [result, setResult] = useState<AnalysisResult>(null);
+
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+    // Check for API key on mount
+    useEffect(() => {
+        const key = localStorage.getItem("openai_api_key");
+        if (!key) {
+            // Automatically open settings if no key found (optional UX improvement)
+            // setIsSettingsOpen(true); 
+        }
+    }, []);
 
     const handleJdSubmit = () => {
         if (jdText.trim().length > 20) {
@@ -38,6 +54,23 @@ export default function Analyzer() {
     const startAnalysis = async () => {
         if (!cvFile || !jdText) return;
 
+        const provider = localStorage.getItem("ai_provider") || "openai";
+        let apiKey = "";
+        let model = "";
+
+        if (provider === "google") {
+            apiKey = localStorage.getItem("google_api_key") || "";
+            model = localStorage.getItem("google_model") || "gemini-1.5-flash";
+        } else {
+            apiKey = localStorage.getItem("openai_api_key") || "";
+            model = localStorage.getItem("openai_model") || "gpt-3.5-turbo";
+        }
+
+        if (!apiKey) {
+            setIsSettingsOpen(true);
+            return;
+        }
+
         setStep(3);
         setIsAnalyzing(true);
         setResult(null);
@@ -49,6 +82,11 @@ export default function Analyzer() {
         try {
             const res = await fetch("/api/analyze", {
                 method: "POST",
+                headers: {
+                    "x-provider": provider,
+                    "x-api-key": apiKey,
+                    "x-model-name": model
+                },
                 body: formData,
             });
 
@@ -58,7 +96,7 @@ export default function Analyzer() {
             setResult(data);
         } catch (error) {
             console.error(error);
-            alert("Something went wrong. Please try again.");
+            alert("Something went wrong. Please check your API Key and try again.");
             setStep(1); // Reset on error
         } finally {
             setIsAnalyzing(false);
@@ -67,8 +105,27 @@ export default function Analyzer() {
 
     return (
         <section id="analyzer" className={styles.section}>
+            <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
             <div className="container">
                 <div className={styles.wrapper}>
+                    {/* Header Actions */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                        <button
+                            onClick={() => setIsSettingsOpen(true)}
+                            style={{
+                                background: 'transparent',
+                                color: '#94a3b8',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontSize: '0.9rem'
+                            }}
+                        >
+                            <Settings size={16} /> Configure AI
+                        </button>
+                    </div>
+
                     {/* Progress Steps */}
                     <div className={styles.progress}>
                         <StepIndicator current={step} step={1} label="Paste Job Description" icon={FileText} />
@@ -213,6 +270,25 @@ export default function Analyzer() {
                                                     </div>
                                                 </div>
                                             </div>
+
+                                            {/* Ethical AI Insights */}
+                                            {result.ethicalInsights && (
+                                                <div className={styles.detailsCard} style={{ background: 'rgba(99, 102, 241, 0.1)', borderColor: 'var(--primary)' }}>
+                                                    <h3>🤖 AI Insights & Ethics</h3>
+                                                    <div className={styles.skillGroup}>
+                                                        <h4>Ethical Bias Check</h4>
+                                                        <p style={{ fontSize: '0.9rem', color: '#e2e8f0', marginBottom: '1rem' }}>
+                                                            {result.ethicalInsights.biasCheck}
+                                                        </p>
+                                                    </div>
+                                                    <div className={styles.skillGroup}>
+                                                        <h4>Resource Usage</h4>
+                                                        <p style={{ fontSize: '0.9rem', color: '#94a3b8' }}>
+                                                            Tokens Processed: <strong>{result.ethicalInsights.tokenUsage}</strong>
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Rewritten CV */}
                                             <div className={styles.rewriteCard}>
